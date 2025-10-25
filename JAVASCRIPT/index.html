@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Logistic Map — Bifurcation & Period-3</title>
+<style>
+  body{font-family:system-ui,Arial,sans-serif;margin:16px;background:#fafafa}
+  .row{display:flex;gap:16px;flex-wrap:wrap}
+  fieldset{border:1px solid #ddd;padding:12px;border-radius:8px;background:#fff}
+  legend{padding:0 6px}
+  canvas{background:#fff;border:1px solid #ccc;border-radius:6px}
+  label{display:inline-block;min-width:95px}
+  input{width:90px}
+  .hint{color:#555;font-size:12px}
+</style>
+</head>
+<body>
+<h1>Logistic Map: bifurcation diagram & period-3 orbit</h1>
+
+<div class="row">
+  <fieldset>
+    <legend>Bifurcation</legend>
+    <div><label>r min</label><input id="rmin" type="number" value="2.5" step="0.001"></div>
+    <div><label>r max</label><input id="rmax" type="number" value="4.0" step="0.001"></div>
+    <div><label>r steps</label><input id="rsteps" type="number" value="1600" step="100"></div>
+    <div><label>discard</label><input id="discard" type="number" value="500" step="100"> <span class="hint">(transients)</span></div>
+    <div><label>keep</label><input id="keep" type="number" value="200" step="50"> <span class="hint">(points per r)</span></div>
+    <div><label>x₀</label><input id="x0" type="number" value="0.5" step="0.01"></div>
+    <button id="plotBtn">Plot</button>
+    <div class="hint">Shaded band ≈ classic period-3 window (~3.828… to ~3.841…)</div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Orbit (single r)</legend>
+    <div><label>r</label><input id="rOrbit" type="number" value="3.83" step="0.0001"></div>
+    <div><label>iters</label><input id="itersOrbit" type="number" value="80"></div>
+    <div><label>x₀</label><input id="x0Orbit" type="number" value="0.2" step="0.01"></div>
+    <button id="orbitBtn">Compute</button>
+    <div id="periodOut" class="hint"></div>
+  </fieldset>
+</div>
+
+<div class="row" style="margin-top:12px">
+  <canvas id="bifurcationCanvas" width="1024" height="640"></canvas>
+</div>
+
+<script>
+/*** ==== PARAMETERS (globals for the draw function) ==== ***/
+let R_MIN = 2.5, R_MAX = 4.0;
+
+/*** ==== YOUR DRAW FUNCTION (slightly annotated) ==== ***/
+// from your uploaded file; kept as-is API-wise  :contentReference[oaicite:1]{index=1}
+function drawBifurcationDiagram(dataPoints) {
+  const canvas = document.getElementById('bifurcationCanvas');
+  const ctx = canvas.getContext('2d');
+  const width = canvas.width, height = canvas.height;
+
+  // clear
+  ctx.fillStyle = 'white'; ctx.fillRect(0, 0, width, height);
+
+  // highlight an approximate period-3 window (optional visual aid)
+  const r3a = 3.828, r3b = 3.8415; // classic 3-cycle window
+  const xA = (r3a - R_MIN) / (R_MAX - R_MIN) * width;
+  const xB = (r3b - R_MIN) / (R_MAX - R_MIN) * width;
+  ctx.fillStyle = 'rgba(255,165,0,0.15)'; ctx.fillRect(xA, 0, xB - xA, height);
+
+  // points
+  ctx.fillStyle = '#111';
+  const POINT_SIZE = 1;
+  const rRange = R_MAX - R_MIN;
+
+  for (const point of dataPoints) {
+    const px = (point.r - R_MIN) / rRange * width;
+    const py = height * (1 - point.x); // x in [0,1]
+    ctx.fillRect(px, py, POINT_SIZE, POINT_SIZE);
+  }
+
+  drawAxes(ctx, width, height);
+}
+
+function drawAxes(ctx, width, height) {
+  ctx.strokeStyle = '#555'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, height-0.5); ctx.lineTo(width, height-0.5); ctx.stroke(); // r-axis
+  ctx.beginPath(); ctx.moveTo(0.5, 0); ctx.lineTo(0.5, height); ctx.stroke();              // x-axis
+  ctx.fillStyle = '#333'; ctx.font = '12px system-ui,Arial';
+  ctx.fillText(`r = ${R_MIN.toFixed(3)}`, 6, height - 8);
+  ctx.fillText(`r = ${R_MAX.toFixed(3)}`, width - 90, height - 8);
+  ctx.fillText('x = 1.0', 6, 14); ctx.fillText('x = 0.0', 6, height - 20);
+}
+
+/*** ==== DATA GENERATION ==== ***/
+function iterateLogistic(r, x) { return r * x * (1 - x); }
+
+function generateBifurcationData(opts) {
+  const { rmin, rmax, rsteps, discard, keep, x0 } = opts;
+  const points = [];
+  const dr = (rmax - rmin) / (rsteps - 1);
+
+  for (let i = 0; i < rsteps; i++) {
+    const r = rmin + i * dr;
+    let x = x0;
+
+    // burn-in
+    for (let k = 0; k < discard; k++) x = iterateLogistic(r, x);
+
+    // keep last 'keep' iterations
+    for (let k = 0; k < keep; k++) {
+      x = iterateLogistic(r, x);
+      points.push({ r, x });
+    }
+  }
+  return points;
+}
+
+/*** ==== SIMPLE PERIOD DETECTION (for the Orbit panel) ==== ***/
+function detectPeriod(values, maxP = 12, tol = 1e-6) {
+  // look at the tail and find smallest p where x[n] ≈ x[n-p]
+  const tail = values.slice(- (maxP*6)); // use last chunk
+  for (let p = 1; p <= maxP; p++) {
+    let ok = true;
+    for (let i = tail.length - 1; i >= p; i--) {
+      if (Math.abs(tail[i] - tail[i - p]) > tol) { ok = false; break; }
+    }
+    if (ok) return p;
+  }
+  return null;
+}
+
+/*** ==== ORBIT DEMO ==== ***/
+function computeOrbit(r, x0, iters = 80) {
+  const xs = [x0];
+  let x = x0;
+  for (let i = 0; i < iters; i++) { x = iterateLogistic(r, x); xs.push(x); }
+  return xs;
+}
+
+/*** ==== UI WIRING ==== ***/
+document.getElementById('plotBtn').addEventListener('click', () => {
+  R_MIN = parseFloat(document.getElementById('rmin').value);
+  R_MAX = parseFloat(document.getElementById('rmax').value);
+  const rsteps = parseInt(document.getElementById('rsteps').value, 10);
+  const discard = parseInt(document.getElementById('discard').value, 10);
+  const keep = parseInt(document.getElementById('keep').value, 10);
+  const x0 = parseFloat(document.getElementById('x0').value);
+
+  const pts = generateBifurcationData({ rmin: R_MIN, rmax: R_MAX, rsteps, discard, keep, x0 });
+  drawBifurcationDiagram(pts);
+});
+
+document.getElementById('orbitBtn').addEventListener('click', () => {
+  const r = parseFloat(document.getElementById('rOrbit').value);
+  const iters = parseInt(document.getElementById('itersOrbit').value, 10);
+  const x0 = parseFloat(document.getElementById('x0Orbit').value);
+  const xs = computeOrbit(r, x0, iters);
+  const p = detectPeriod(xs, 20, 1e-7);
+  const msg = (p === null) ? `No small period detected (likely chaotic)` :
+                             `Detected period ≈ ${p}`;
+  document.getElementById('periodOut').textContent =
+    `${msg}. Example tail: ${xs.slice(-6).map(v=>v.toFixed(4)).join(', ')}`;
+});
+
+// draw a default picture on load
+document.getElementById('plotBtn').click();
+</script>
+</body>
+</html>
