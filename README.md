@@ -24,7 +24,7 @@ pip install pcbasic
 
 Given a file basicFile.bas, it suffices to run
 
-pcbasic --video=cga --run meander_gwbasic.bas
+pcbasic --video=cga --run basicFile.bas
 
 
 
